@@ -76,11 +76,11 @@
       padding-top: env(safe-area-inset-top, 1rem);
     }
     .safe-bottom {
-      padding-bottom: env(safe-area-inset-bottom, 1.25rem);
+      padding-bottom: max(env(safe-area-inset-bottom, 0.75rem), 0.75rem);
     }
   </style>
 </head>
-<body class="bg-black text-white h-screen w-screen overflow-hidden flex flex-col justify-between">
+<body class="bg-black text-white h-[100dvh] w-screen overflow-hidden flex flex-col justify-between">
 
   <div id="viewport-container" class="relative flex-1 w-full h-full overflow-hidden bg-neutral-900 select-none">
     
@@ -96,8 +96,8 @@
       </div>
     </div>
 
-    <!-- Trace Target Image (Interactive AR Layer) -->
-    <div id="trace-layer" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 touch-none cursor-move origin-center"
+    <!-- Trace Target Image (Interactive AR Layer) - hidden until camera or skip initiated -->
+    <div id="trace-layer" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 touch-none cursor-move origin-center"
          style="transform: translate(-50%, -50%) scale(1) rotate(0deg); opacity: 0.55;">
       <img id="trace-img" 
            src="https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=600&auto=format&fit=crop&q=80" 
@@ -115,20 +115,25 @@
       <span id="toast-text">Ready to trace</span>
     </div>
 
-    <!-- Onscreen Camera Setup Prompt (When camera is off) -->
-    <div id="camera-fallback" class="absolute inset-0 z-10 flex flex-col items-center justify-center p-6 text-center bg-neutral-950/80 backdrop-blur-sm">
-      <div class="w-16 h-16 rounded-2xl bg-sky-500/20 text-sky-400 flex items-center justify-center mb-4">
+    <!-- Onscreen Camera Setup Prompt (Prioritized with z-40 so it is never covered) -->
+    <div id="camera-fallback" class="absolute inset-0 z-40 flex flex-col items-center justify-center p-6 text-center bg-neutral-950/90 backdrop-blur-md">
+      <div class="w-16 h-16 rounded-2xl bg-sky-500/20 text-sky-400 flex items-center justify-center mb-3">
         <i data-lucide="camera" class="w-8 h-8"></i>
       </div>
       <h2 class="text-xl font-bold mb-2">Enable Camera for AR Tracing</h2>
-      <p class="text-sm text-neutral-300 max-w-xs mb-6">
-        Point your phone downwards over a piece of paper or sketchbook to trace the image overlay with a pencil.
+      <p class="text-xs sm:text-sm text-neutral-300 max-w-xs mb-5 leading-relaxed">
+        Point your phone downwards over paper or sketchbook to trace the projected image with your pencil.
       </p>
-      <button id="start-cam-btn" class="bg-sky-500 hover:bg-sky-600 text-white font-medium px-6 py-3 rounded-full flex items-center gap-2 shadow-lg shadow-sky-500/30 active:scale-95 transition-transform">
-        <i data-lucide="video" class="w-5 h-5"></i>
-        Start AR Camera
-      </button>
-      <p class="text-xs text-neutral-500 mt-4">Free • No Subscription • Works in Safari & Chrome</p>
+      <div class="flex flex-col gap-2.5 w-full max-w-xs">
+        <button id="start-cam-btn" class="w-full bg-sky-500 hover:bg-sky-600 text-white font-semibold py-3 px-6 rounded-full flex items-center justify-center gap-2 shadow-lg shadow-sky-500/30 active:scale-95 transition-transform">
+          <i data-lucide="video" class="w-5 h-5"></i>
+          <span>Start AR Camera</span>
+        </button>
+        <button id="skip-cam-btn" class="w-full bg-white/10 hover:bg-white/15 text-neutral-300 font-medium py-2.5 px-4 rounded-full text-xs active:scale-95 transition">
+          Continue without camera (Preview Mode)
+        </button>
+      </div>
+      <p class="text-[11px] text-neutral-400 mt-4">100% Free • No Subscription Needed • Works in Safari</p>
     </div>
   </div>
 
@@ -163,57 +168,57 @@
     </div>
   </header>
 
-  <footer class="safe-bottom p-4 z-30 bg-black/75 backdrop-blur-xl border-t border-white/10 flex flex-col gap-3">
+  <footer class="safe-bottom px-3 py-2 z-30 bg-black/85 backdrop-blur-xl border-t border-white/10 flex flex-col gap-2 max-h-[40vh] overflow-y-auto">
     
     <!-- Opacity and Size Adjustment Sliders -->
-    <div class="flex flex-col gap-2 max-w-lg mx-auto w-full">
+    <div class="flex flex-col gap-1.5 max-w-lg mx-auto w-full">
       <!-- Opacity row -->
-      <div class="flex items-center justify-between text-xs text-neutral-300 gap-3">
-        <div class="flex items-center gap-1.5 w-20">
-          <i data-lucide="eye" class="w-4 h-4 text-sky-400"></i>
-          <span>Opacity</span>
+      <div class="flex items-center justify-between text-xs text-neutral-300 gap-2">
+        <div class="flex items-center gap-1 w-16 shrink-0">
+          <i data-lucide="eye" class="w-3.5 h-3.5 text-sky-400"></i>
+          <span class="text-[11px]">Opacity</span>
         </div>
         <input id="slider-opacity" type="range" min="0.05" max="1" step="0.01" value="0.55" class="flex-1 accent-sky-500">
-        <span id="label-opacity" class="w-9 text-right font-mono text-neutral-400">55%</span>
+        <span id="label-opacity" class="w-8 text-right font-mono text-[11px] text-neutral-400">55%</span>
       </div>
 
-      <!-- Scale row -->
-      <div class="flex items-center justify-between text-xs text-neutral-300 gap-3">
-        <div class="flex items-center gap-1.5 w-20">
-          <i data-lucide="maximize" class="w-4 h-4 text-sky-400"></i>
-          <span>Size</span>
+      <!-- Scale row (Expanded zoom to 8.0x) -->
+      <div class="flex items-center justify-between text-xs text-neutral-300 gap-2">
+        <div class="flex items-center gap-1 w-16 shrink-0">
+          <i data-lucide="maximize" class="w-3.5 h-3.5 text-sky-400"></i>
+          <span class="text-[11px]">Zoom</span>
         </div>
-        <input id="slider-scale" type="range" min="0.3" max="3" step="0.05" value="1" class="flex-1 accent-sky-500">
-        <span id="label-scale" class="w-9 text-right font-mono text-neutral-400">1.0x</span>
+        <input id="slider-scale" type="range" min="0.2" max="8.0" step="0.05" value="1.0" class="flex-1 accent-sky-500">
+        <span id="label-scale" class="w-8 text-right font-mono text-[11px] text-neutral-400">1.0x</span>
       </div>
     </div>
 
-    <!-- Filter Buttons & Image Selection Actions -->
-    <div class="flex items-center justify-between gap-2 max-w-lg mx-auto w-full pt-1 border-t border-white/5">
+    <!-- Filter Buttons & Image Selection Actions with horizontal scrolling prevention -->
+    <div class="flex flex-wrap items-center justify-between gap-1.5 max-w-lg mx-auto w-full pt-1 border-t border-white/5">
       
       <!-- Filter Selector -->
-      <div class="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/10 overflow-x-auto">
-        <button data-filter="normal" class="filter-btn text-[11px] px-2.5 py-1 rounded-lg bg-sky-500 text-white font-medium transition">Normal</button>
-        <button data-filter="sketch" class="filter-btn text-[11px] px-2.5 py-1 rounded-lg text-neutral-300 hover:text-white transition">Sketch</button>
-        <button data-filter="outline" class="filter-btn text-[11px] px-2.5 py-1 rounded-lg text-neutral-300 hover:text-white transition">Edge</button>
-        <button data-filter="invert" class="filter-btn text-[11px] px-2.5 py-1 rounded-lg text-neutral-300 hover:text-white transition">Invert</button>
+      <div class="flex items-center gap-1 bg-white/5 p-0.5 rounded-lg border border-white/10 overflow-x-auto shrink-0">
+        <button data-filter="normal" class="filter-btn text-[10px] px-2 py-1 rounded-md bg-sky-500 text-white font-medium transition">Normal</button>
+        <button data-filter="sketch" class="filter-btn text-[10px] px-2 py-1 rounded-md text-neutral-300 hover:text-white transition">Sketch</button>
+        <button data-filter="outline" class="filter-btn text-[10px] px-2 py-1 rounded-md text-neutral-300 hover:text-white transition">Edge</button>
+        <button data-filter="invert" class="filter-btn text-[10px] px-2 py-1 rounded-md text-neutral-300 hover:text-white transition">Invert</button>
       </div>
 
-      <!-- Transform Tools (Flip & Reset) -->
-      <div class="flex items-center gap-1.5">
-        <button id="btn-flip" title="Flip Horizontal" class="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white active:scale-95 transition">
-          <i data-lucide="flip-horizontal" class="w-4 h-4"></i>
+      <!-- Transform Tools (Flip & Reset & Photos) -->
+      <div class="flex items-center gap-1 ml-auto">
+        <button id="btn-flip" title="Flip Horizontal" class="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white active:scale-95 transition">
+          <i data-lucide="flip-horizontal" class="w-3.5 h-3.5"></i>
         </button>
-        <button id="btn-rotate" title="Rotate 90°" class="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white active:scale-95 transition">
-          <i data-lucide="rotate-cw" class="w-4 h-4"></i>
+        <button id="btn-rotate" title="Rotate 90°" class="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white active:scale-95 transition">
+          <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i>
         </button>
-        <button id="btn-reset" title="Reset Image" class="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white active:scale-95 transition">
-          <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+        <button id="btn-reset" title="Reset Image" class="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white active:scale-95 transition">
+          <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
         </button>
 
         <!-- Library / Upload Trigger -->
-        <button id="btn-open-library" class="ml-1 px-3 py-2 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-sky-500/20 active:scale-95 transition">
-          <i data-lucide="image" class="w-4 h-4"></i>
+        <button id="btn-open-library" class="px-2.5 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-600 text-white text-[11px] font-semibold flex items-center gap-1 shadow-md shadow-sky-500/20 active:scale-95 transition">
+          <i data-lucide="image" class="w-3.5 h-3.5"></i>
           <span>Photos</span>
         </button>
       </div>
@@ -295,6 +300,7 @@
     const videoEl = document.getElementById('camera-video');
     const cameraFallback = document.getElementById('camera-fallback');
     const startCamBtn = document.getElementById('start-cam-btn');
+    const skipCamBtn = document.getElementById('skip-cam-btn');
     const traceLayer = document.getElementById('trace-layer');
     const traceImg = document.getElementById('trace-img');
     const boundingBox = document.getElementById('bounding-box');
@@ -354,6 +360,7 @@
         state.track = videoTrack;
 
         cameraFallback.classList.add('hidden');
+        traceLayer.classList.remove('hidden');
         showToast("Camera connected");
 
         // Check if torch/flashlight is supported
@@ -364,8 +371,18 @@
       } catch (err) {
         console.error("Camera access error:", err);
         showToast("Camera access denied or unavailable");
+        // Reveal tracing layer even if camera fails so app remains usable
+        cameraFallback.classList.add('hidden');
+        traceLayer.classList.remove('hidden');
       }
     }
+
+    /* Preview Mode without camera */
+    skipCamBtn.addEventListener('click', () => {
+      cameraFallback.classList.add('hidden');
+      traceLayer.classList.remove('hidden');
+      showToast("Tracing preview mode active");
+    });
 
     async function toggleTorch() {
       if (!state.track) {
@@ -482,10 +499,10 @@
         e.preventDefault();
         const dist = getDistance(e.touches);
         const factor = dist / initialDistance;
-        let newScale = Math.min(Math.max(initialScale * factor, 0.3), 3.0);
+        let newScale = Math.min(Math.max(initialScale * factor, 0.2), 8.0);
         state.scale = parseFloat(newScale.toFixed(2));
         sliderScale.value = state.scale;
-        labelScale.textContent = `${state.scale}x`;
+        labelScale.textContent = `${state.scale.toFixed(1)}x`;
         applyTransform();
       }
     }, { passive: false });
