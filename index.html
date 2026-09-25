@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>AR Sketch & Trace Studio</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              400: '#38bdf8',
+              500: '#0284c7',
+              600: '#0369a1'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Prevent pull-to-refresh, bounce and selection on mobile */
+    html, body {
+      overscroll-behavior-y: contain;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    /* Edge detection filter via canvas or SVG filter */
+    .filter-invert {
+      filter: invert(1) grayscale(1) contrast(300%);
+    }
+    .filter-outline {
+      filter: grayscale(1) contrast(400%) drop-shadow(0 0 1px #000);
+    }
+    .filter-sketch {
+      filter: grayscale(1) contrast(200%) brightness(1.1);
+    }
+
+    /* Grid overlay background */
+    .grid-pattern {
+      background-size: 40px 40px;
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.15) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.15) 1px, transparent 1px);
+    }
+
+    /* Range slider styling */
+    input[type=range] {
+      -webkit-appearance: none;
+      background: rgba(255, 255, 255, 0.25);
+      border-radius: 9999px;
+      height: 6px;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      height: 22px;
+      width: 22px;
+      border-radius: 50%;
+      background: #38bdf8;
+      box-shadow: 0 0 8px rgba(0,0,0,0.5);
+      cursor: pointer;
+    }
+
+    /* Safe-area insets for modern iPhones */
+    .safe-top {
+      padding-top: env(safe-area-inset-top, 1rem);
+    }
+    .safe-bottom {
+      padding-bottom: env(safe-area-inset-bottom, 1.25rem);
+    }
+  </style>
+</head>
+<body class="bg-black text-white h-screen w-screen overflow-hidden flex flex-col justify-between">
+
+  <div id="viewport-container" class="relative flex-1 w-full h-full overflow-hidden bg-neutral-900 select-none">
+    
+    <!-- Camera Video Stream -->
+    <video id="camera-video" playsinline autoplay muted class="absolute inset-0 w-full h-full object-cover z-0"></video>
+    
+    <!-- Alignment / Perspective Grid (Toggleable) -->
+    <div id="grid-overlay" class="absolute inset-0 pointer-events-none z-10 grid-pattern hidden">
+      <div class="w-full h-full flex items-center justify-center">
+        <div class="w-12 h-12 border border-sky-400/40 rounded-full flex items-center justify-center">
+          <div class="w-1.5 h-1.5 bg-sky-400/70 rounded-full"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Trace Target Image (Interactive AR Layer) -->
+    <div id="trace-layer" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 touch-none cursor-move origin-center"
+         style="transform: translate(-50%, -50%) scale(1) rotate(0deg); opacity: 0.55;">
+      <img id="trace-img" 
+           src="https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=600&auto=format&fit=crop&q=80" 
+           alt="Reference Trace" 
+           class="max-w-[280px] max-h-[380px] sm:max-w-md sm:max-h-[500px] object-contain pointer-events-none drop-shadow-xl select-none" />
+      
+      <!-- Interactive Boundary Box when Unlocked -->
+      <div id="bounding-box" class="absolute -inset-2 border-2 border-dashed border-sky-400/70 rounded-lg pointer-events-none transition-opacity duration-200">
+        <div class="absolute -top-3 -right-3 bg-sky-500 text-[10px] text-white px-2 py-0.5 rounded-full font-bold shadow">AR GUIDE</div>
+      </div>
+    </div>
+
+    <!-- Status Toast Notification -->
+    <div id="toast" class="absolute top-20 left-1/2 -translate-x-1/2 z-50 bg-black/80 backdrop-blur-md border border-white/20 text-white text-xs px-4 py-2 rounded-full shadow-2xl opacity-0 transition-opacity duration-300 pointer-events-none flex items-center gap-2">
+      <span id="toast-text">Ready to trace</span>
+    </div>
+
+    <!-- Onscreen Camera Setup Prompt (When camera is off) -->
+    <div id="camera-fallback" class="absolute inset-0 z-10 flex flex-col items-center justify-center p-6 text-center bg-neutral-950/80 backdrop-blur-sm">
+      <div class="w-16 h-16 rounded-2xl bg-sky-500/20 text-sky-400 flex items-center justify-center mb-4">
+        <i data-lucide="camera" class="w-8 h-8"></i>
+      </div>
+      <h2 class="text-xl font-bold mb-2">Enable Camera for AR Tracing</h2>
+      <p class="text-sm text-neutral-300 max-w-xs mb-6">
+        Point your phone downwards over a piece of paper or sketchbook to trace the image overlay with a pencil.
+      </p>
+      <button id="start-cam-btn" class="bg-sky-500 hover:bg-sky-600 text-white font-medium px-6 py-3 rounded-full flex items-center gap-2 shadow-lg shadow-sky-500/30 active:scale-95 transition-transform">
+        <i data-lucide="video" class="w-5 h-5"></i>
+        Start AR Camera
+      </button>
+      <p class="text-xs text-neutral-500 mt-4">Free • No Subscription • Works in Safari & Chrome</p>
+    </div>
+  </div>
+
+  <header class="absolute top-0 inset-x-0 safe-top p-4 z-30 flex items-center justify-between pointer-events-none">
+    <div class="flex items-center gap-2 pointer-events-auto bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 shadow">
+      <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+      <span class="text-xs font-semibold tracking-wide uppercase text-neutral-200">AR TRACE</span>
+    </div>
+
+    <!-- Quick Action Icons -->
+    <div class="flex items-center gap-2 pointer-events-auto">
+      <!-- Flashlight / Torch Toggle -->
+      <button id="btn-torch" class="w-10 h-10 rounded-full bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-center text-neutral-300 hover:text-white active:scale-90 transition">
+        <i data-lucide="zap" class="w-5 h-5"></i>
+      </button>
+      
+      <!-- Alignment Grid Toggle -->
+      <button id="btn-grid" class="w-10 h-10 rounded-full bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-center text-neutral-300 hover:text-white active:scale-90 transition">
+        <i data-lucide="grid" class="w-5 h-5"></i>
+      </button>
+
+      <!-- Lock Position Button -->
+      <button id="btn-lock" class="h-10 px-3.5 rounded-full bg-black/60 backdrop-blur-md border border-white/10 flex items-center gap-1.5 text-neutral-300 hover:text-white active:scale-90 transition">
+        <i id="lock-icon" data-lucide="unlock" class="w-4 h-4 text-sky-400"></i>
+        <span id="lock-label" class="text-xs font-medium">Free</span>
+      </button>
+
+      <!-- Snapshot Trace -->
+      <button id="btn-capture" class="w-10 h-10 rounded-full bg-sky-500 hover:bg-sky-600 border border-white/20 flex items-center justify-center text-white active:scale-90 transition shadow-lg shadow-sky-500/25">
+        <i data-lucide="camera" class="w-5 h-5"></i>
+      </button>
+    </div>
+  </header>
+
+  <footer class="safe-bottom p-4 z-30 bg-black/75 backdrop-blur-xl border-t border-white/10 flex flex-col gap-3">
+    
+    <!-- Opacity and Size Adjustment Sliders -->
+    <div class="flex flex-col gap-2 max-w-lg mx-auto w-full">
+      <!-- Opacity row -->
+      <div class="flex items-center justify-between text-xs text-neutral-300 gap-3">
+        <div class="flex items-center gap-1.5 w-20">
+          <i data-lucide="eye" class="w-4 h-4 text-sky-400"></i>
+          <span>Opacity</span>
+        </div>
+        <input id="slider-opacity" type="range" min="0.05" max="1" step="0.01" value="0.55" class="flex-1 accent-sky-500">
+        <span id="label-opacity" class="w-9 text-right font-mono text-neutral-400">55%</span>
+      </div>
+
+      <!-- Scale row -->
+      <div class="flex items-center justify-between text-xs text-neutral-300 gap-3">
+        <div class="flex items-center gap-1.5 w-20">
+          <i data-lucide="maximize" class="w-4 h-4 text-sky-400"></i>
+          <span>Size</span>
+        </div>
+        <input id="slider-scale" type="range" min="0.3" max="3" step="0.05" value="1" class="flex-1 accent-sky-500">
+        <span id="label-scale" class="w-9 text-right font-mono text-neutral-400">1.0x</span>
+      </div>
+    </div>
+
+    <!-- Filter Buttons & Image Selection Actions -->
+    <div class="flex items-center justify-between gap-2 max-w-lg mx-auto w-full pt-1 border-t border-white/5">
+      
+      <!-- Filter Selector -->
+      <div class="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/10 overflow-x-auto">
+        <button data-filter="normal" class="filter-btn text-[11px] px-2.5 py-1 rounded-lg bg-sky-500 text-white font-medium transition">Normal</button>
+        <button data-filter="sketch" class="filter-btn text-[11px] px-2.5 py-1 rounded-lg text-neutral-300 hover:text-white transition">Sketch</button>
+        <button data-filter="outline" class="filter-btn text-[11px] px-2.5 py-1 rounded-lg text-neutral-300 hover:text-white transition">Edge</button>
+        <button data-filter="invert" class="filter-btn text-[11px] px-2.5 py-1 rounded-lg text-neutral-300 hover:text-white transition">Invert</button>
+      </div>
+
+      <!-- Transform Tools (Flip & Reset) -->
+      <div class="flex items-center gap-1.5">
+        <button id="btn-flip" title="Flip Horizontal" class="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white active:scale-95 transition">
+          <i data-lucide="flip-horizontal" class="w-4 h-4"></i>
+        </button>
+        <button id="btn-rotate" title="Rotate 90°" class="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white active:scale-95 transition">
+          <i data-lucide="rotate-cw" class="w-4 h-4"></i>
+        </button>
+        <button id="btn-reset" title="Reset Image" class="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white active:scale-95 transition">
+          <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+        </button>
+
+        <!-- Library / Upload Trigger -->
+        <button id="btn-open-library" class="ml-1 px-3 py-2 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-sky-500/20 active:scale-95 transition">
+          <i data-lucide="image" class="w-4 h-4"></i>
+          <span>Photos</span>
+        </button>
+      </div>
+    </div>
+  </footer>
+
+  <div id="modal-library" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden flex-col justify-end sm:justify-center sm:items-center p-0 sm:p-4">
+    <div class="bg-neutral-900 border border-white/15 w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-200">
+      
+      <!-- Modal Header -->
+      <div class="p-4 border-b border-white/10 flex items-center justify-between">
+        <div>
+          <h3 class="text-base font-bold text-white">Choose Reference Sketch</h3>
+          <p class="text-xs text-neutral-400">Pick a preset or upload from your iPhone camera roll</p>
+        </div>
+        <button id="btn-close-modal" class="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-neutral-300 hover:text-white">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <!-- Upload Custom File -->
+      <div class="p-4 border-b border-white/5">
+        <label for="file-input" class="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 border-dashed border-sky-400/40 hover:border-sky-400 bg-sky-500/10 text-sky-400 text-sm font-medium cursor-pointer transition">
+          <i data-lucide="upload" class="w-4 h-4"></i>
+          <span>Upload From Camera Roll / Files</span>
+        </label>
+        <input type="file" id="file-input" accept="image/*" class="hidden">
+      </div>
+
+      <!-- Presets Scroll Area -->
+      <div class="p-4 overflow-y-auto flex-1">
+        <h4 class="text-xs uppercase font-semibold text-neutral-400 mb-3 tracking-wider">Tracing Templates</h4>
+        <div id="preset-grid" class="grid grid-cols-3 gap-2.5">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- Instructions Footer -->
+      <div class="p-3 bg-neutral-950 text-neutral-400 text-[11px] text-center border-t border-white/5">
+        Tip: Prop your phone horizontally on a coffee mug or books over your sketch paper.
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden Canvas for Snapshot Capture -->
+  <canvas id="capture-canvas" class="hidden"></canvas>
+
+  <script>
+    /* Initialize Lucide Icons */
+    lucide.createIcons();
+
+    /* Preset Tracing Library */
+    const PRESETS = [
+      { name: "Butterfly", url: "https://images.unsplash.com/photo-1558642452-9d2a7deb7f62?w=500&auto=format&fit=crop&q=80" },
+      { name: "Flower Rose", url: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=500&auto=format&fit=crop&q=80" },
+      { name: "Cat Outline", url: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=500&auto=format&fit=crop&q=80" },
+      { name: "Anime Eyes", url: "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=500&auto=format&fit=crop&q=80" },
+      { name: "Vintage Car", url: "https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=500&auto=format&fit=crop&q=80" },
+      { name: "Statue Bust", url: "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=500&auto=format&fit=crop&q=80" }
+    ];
+
+    /* App State */
+    const state = {
+      isLocked: false,
+      isFlipped: false,
+      gridActive: false,
+      rotation: 0,
+      scale: 1,
+      opacity: 0.55,
+      filter: 'normal',
+      posX: 0,
+      posY: 0,
+      stream: null,
+      torchActive: false,
+      track: null
+    };
+
+    /* DOM Elements */
+    const videoEl = document.getElementById('camera-video');
+    const cameraFallback = document.getElementById('camera-fallback');
+    const startCamBtn = document.getElementById('start-cam-btn');
+    const traceLayer = document.getElementById('trace-layer');
+    const traceImg = document.getElementById('trace-img');
+    const boundingBox = document.getElementById('bounding-box');
+    const gridOverlay = document.getElementById('grid-overlay');
+    const toast = document.getElementById('toast');
+    const toastText = document.getElementById('toast-text');
+
+    const sliderOpacity = document.getElementById('slider-opacity');
+    const labelOpacity = document.getElementById('label-opacity');
+    const sliderScale = document.getElementById('slider-scale');
+    const labelScale = document.getElementById('label-scale');
+
+    const btnLock = document.getElementById('btn-lock');
+    const lockIcon = document.getElementById('lock-icon');
+    const lockLabel = document.getElementById('lock-label');
+    const btnGrid = document.getElementById('btn-grid');
+    const btnTorch = document.getElementById('btn-torch');
+    const btnFlip = document.getElementById('btn-flip');
+    const btnRotate = document.getElementById('btn-rotate');
+    const btnReset = document.getElementById('btn-reset');
+    const btnCapture = document.getElementById('btn-capture');
+
+    const modalLibrary = document.getElementById('modal-library');
+    const btnOpenLibrary = document.getElementById('btn-open-library');
+    const btnCloseModal = document.getElementById('btn-close-modal');
+    const fileInput = document.getElementById('file-input');
+    const presetGrid = document.getElementById('preset-grid');
+    const filterButtons = document.querySelectorAll('.filter-btn');
+
+    function showToast(msg) {
+      toastText.textContent = msg;
+      toast.classList.remove('opacity-0');
+      toast.classList.add('opacity-100');
+      setTimeout(() => {
+        toast.classList.remove('opacity-100');
+        toast.classList.add('opacity-0');
+      }, 2000);
+    }
+
+    async function startCamera() {
+      try {
+        const constraints = {
+          audio: false,
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          }
+        };
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        state.stream = stream;
+        videoEl.srcObject = stream;
+        videoEl.play();
+
+        const videoTrack = stream.getVideoTracks()[0];
+        state.track = videoTrack;
+
+        cameraFallback.classList.add('hidden');
+        showToast("Camera connected");
+
+        // Check if torch/flashlight is supported
+        const capabilities = videoTrack.getCapabilities ? videoTrack.getCapabilities() : {};
+        if (!capabilities.torch) {
+          btnTorch.classList.add('opacity-40');
+        }
+      } catch (err) {
+        console.error("Camera access error:", err);
+        showToast("Camera access denied or unavailable");
+      }
+    }
+
+    async function toggleTorch() {
+      if (!state.track) {
+        showToast("Camera not ready");
+        return;
+      }
+      try {
+        const capabilities = state.track.getCapabilities ? state.track.getCapabilities() : {};
+        if (capabilities.torch) {
+          state.torchActive = !state.torchActive;
+          await state.track.applyConstraints({
+            advanced: [{ torch: state.torchActive }]
+          });
+          btnTorch.classList.toggle('text-yellow-400', state.torchActive);
+          btnTorch.classList.toggle('bg-yellow-400/20', state.torchActive);
+          showToast(state.torchActive ? "Torch On" : "Torch Off");
+        } else {
+          showToast("Flashlight not supported on this browser");
+        }
+      } catch (err) {
+        showToast("Flashlight control failed");
+      }
+    }
+
+    function applyTransform() {
+      const flipScale = state.isFlipped ? -1 : 1;
+      traceLayer.style.transform = `translate(calc(-50% + ${state.posX}px), calc(-50% + ${state.posY}px)) scale(${state.scale * flipScale}, ${state.scale}) rotate(${state.rotation}deg)`;
+      traceLayer.style.opacity = state.opacity;
+    }
+
+    function setFilter(type) {
+      state.filter = type;
+      traceImg.className = "max-w-[280px] max-h-[380px] sm:max-w-md sm:max-h-[500px] object-contain pointer-events-none drop-shadow-xl select-none";
+      if (type === 'sketch') traceImg.classList.add('filter-sketch');
+      if (type === 'outline') traceImg.classList.add('filter-outline');
+      if (type === 'invert') traceImg.classList.add('filter-invert');
+
+      filterButtons.forEach(btn => {
+        if (btn.getAttribute('data-filter') === type) {
+          btn.className = "filter-btn text-[11px] px-2.5 py-1 rounded-lg bg-sky-500 text-white font-medium transition";
+        } else {
+          btn.className = "filter-btn text-[11px] px-2.5 py-1 rounded-lg text-neutral-300 hover:text-white transition";
+        }
+      });
+      showToast(`Filter: ${type.toUpperCase()}`);
+    }
+
+    function toggleLock() {
+      state.isLocked = !state.isLocked;
+      if (state.isLocked) {
+        boundingBox.classList.add('opacity-0');
+        lockIcon.setAttribute('data-lucide', 'lock');
+        lockIcon.classList.remove('text-sky-400');
+        lockIcon.classList.add('text-red-400');
+        lockLabel.textContent = "Locked";
+        showToast("Position Locked");
+      } else {
+        boundingBox.classList.remove('opacity-0');
+        lockIcon.setAttribute('data-lucide', 'unlock');
+        lockIcon.classList.add('text-sky-400');
+        lockIcon.classList.remove('text-red-400');
+        lockLabel.textContent = "Free";
+        showToast("Position Unlocked");
+      }
+      lucide.createIcons();
+    }
+
+    function resetPosition() {
+      state.posX = 0;
+      state.posY = 0;
+      state.scale = 1;
+      state.rotation = 0;
+      state.isFlipped = false;
+      sliderScale.value = 1;
+      labelScale.textContent = "1.0x";
+      applyTransform();
+      showToast("Position Reset");
+    }
+
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+    let initialDistance = 0;
+    let initialScale = 1;
+
+    // Helper for touch distance (Pinch to zoom)
+    function getDistance(touches) {
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    traceLayer.addEventListener('touchstart', (e) => {
+      if (state.isLocked) return;
+      if (e.touches.length === 1) {
+        isDragging = true;
+        startX = e.touches[0].clientX - state.posX;
+        startY = e.touches[0].clientY - state.posY;
+      } else if (e.touches.length === 2) {
+        isDragging = false;
+        initialDistance = getDistance(e.touches);
+        initialScale = state.scale;
+      }
+    }, { passive: false });
+
+    window.addEventListener('touchmove', (e) => {
+      if (state.isLocked) return;
+      if (e.touches.length === 1 && isDragging) {
+        e.preventDefault();
+        state.posX = e.touches[0].clientX - startX;
+        state.posY = e.touches[0].clientY - startY;
+        applyTransform();
+      } else if (e.touches.length === 2 && initialDistance > 0) {
+        e.preventDefault();
+        const dist = getDistance(e.touches);
+        const factor = dist / initialDistance;
+        let newScale = Math.min(Math.max(initialScale * factor, 0.3), 3.0);
+        state.scale = parseFloat(newScale.toFixed(2));
+        sliderScale.value = state.scale;
+        labelScale.textContent = `${state.scale}x`;
+        applyTransform();
+      }
+    }, { passive: false });
+
+    window.addEventListener('touchend', () => {
+      isDragging = false;
+      initialDistance = 0;
+    });
+
+    // Mouse drag support for desktop testing
+    let isMouseDown = false;
+    traceLayer.addEventListener('mousedown', (e) => {
+      if (state.isLocked) return;
+      isMouseDown = true;
+      startX = e.clientX - state.posX;
+      startY = e.clientY - state.posY;
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (isMouseDown && !state.isLocked) {
+        state.posX = e.clientX - startX;
+        state.posY = e.clientY - startY;
+        applyTransform();
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      isMouseDown = false;
+    });
+
+    sliderOpacity.addEventListener('input', (e) => {
+      state.opacity = parseFloat(e.target.value);
+      labelOpacity.textContent = `${Math.round(state.opacity * 100)}%`;
+      applyTransform();
+    });
+
+    sliderScale.addEventListener('input', (e) => {
+      state.scale = parseFloat(e.target.value);
+      labelScale.textContent = `${state.scale.toFixed(1)}x`;
+      applyTransform();
+    });
+
+    btnLock.addEventListener('click', toggleLock);
+
+    btnGrid.addEventListener('click', () => {
+      state.gridActive = !state.gridActive;
+      gridOverlay.classList.toggle('hidden', !state.gridActive);
+      btnGrid.classList.toggle('bg-sky-500/30', state.gridActive);
+      btnGrid.classList.toggle('text-sky-400', state.gridActive);
+      showToast(state.gridActive ? "Grid Enabled" : "Grid Hidden");
+    });
+
+    btnTorch.addEventListener('click', toggleTorch);
+
+    btnFlip.addEventListener('click', () => {
+      state.isFlipped = !state.isFlipped;
+      applyTransform();
+      showToast(state.isFlipped ? "Mirrored Horizontally" : "Normal Orientation");
+    });
+
+    btnRotate.addEventListener('click', () => {
+      state.rotation = (state.rotation + 90) % 360;
+      applyTransform();
+      showToast(`Rotated: ${state.rotation}°`);
+    });
+
+    btnReset.addEventListener('click', resetPosition);
+
+    filterButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        setFilter(btn.getAttribute('data-filter'));
+      });
+    });
+
+    startCamBtn.addEventListener('click', startCamera);
+
+    function populatePresets() {
+      presetGrid.innerHTML = '';
+      PRESETS.forEach(item => {
+        const card = document.createElement('div');
+        card.className = "group relative aspect-square rounded-xl overflow-hidden border border-white/10 hover:border-sky-400 cursor-pointer transition";
+        card.innerHTML = `
+          <img src="${item.url}" alt="${item.name}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300">
+          <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-1.5 text-center">
+            <span class="text-[10px] font-medium text-white truncate block">${item.name}</span>
+          </div>
+        `;
+        card.addEventListener('click', () => {
+          traceImg.src = item.url;
+          modalLibrary.classList.add('hidden');
+          showToast(`Selected: ${item.name}`);
+        });
+        presetGrid.appendChild(card);
+      });
+    }
+
+    btnOpenLibrary.addEventListener('click', () => {
+      modalLibrary.classList.remove('hidden');
+      modalLibrary.classList.add('flex');
+    });
+
+    btnCloseModal.addEventListener('click', () => {
+      modalLibrary.classList.add('hidden');
+      modalLibrary.classList.remove('flex');
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          traceImg.src = event.target.result;
+          modalLibrary.classList.add('hidden');
+          modalLibrary.classList.remove('flex');
+          showToast("Photo Loaded!");
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    btnCapture.addEventListener('click', () => {
+      const canvas = document.getElementById('capture-canvas');
+      const ctx = canvas.getContext('2d');
+      
+      canvas.width = videoEl.videoWidth || window.innerWidth;
+      canvas.height = videoEl.videoHeight || window.innerHeight;
+
+      // Draw camera view
+      if (videoEl.readyState >= 2) {
+        ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+      } else {
+        ctx.fillStyle = "#1e293b";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
+      // Draw trace overlay watermark
+      ctx.fillStyle = "rgba(0,0,0,0.4)";
+      ctx.fillRect(0, canvas.height - 40, canvas.width, 40);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "14px sans-serif";
+      ctx.fillText("AR Drawing Studio Trace Snapshot", 16, canvas.height - 15);
+
+      // Trigger download
+      try {
+        const dataUrl = canvas.toDataURL('image/jpeg');
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = `ar-trace-${Date.now()}.jpg`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        showToast("Snapshot Saved!");
+      } catch (err) {
+        showToast("Snapshot not available in secure context");
+      }
+    });
+
+    /* Initialize presets & auto-trigger camera prompt on page load */
+    window.addEventListener('DOMContentLoaded', () => {
+      populatePresets();
+      applyTransform();
+    });
+  </script>
+</body>
+</html>
