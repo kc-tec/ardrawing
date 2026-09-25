@@ -35,7 +35,7 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
 
-    /* Edge detection filter via canvas or SVG filter */
+    /* Edge detection and filter effects */
     .filter-invert {
       filter: invert(1) grayscale(1) contrast(300%);
     }
@@ -71,7 +71,7 @@
       cursor: pointer;
     }
 
-    /* Safe-area insets for modern iPhones */
+    /* Safe-area insets for modern mobile displays */
     .safe-top {
       padding-top: env(safe-area-inset-top, 1rem);
     }
@@ -96,7 +96,7 @@
       </div>
     </div>
 
-    <!-- Trace Target Image (Interactive AR Layer) - hidden until camera or skip initiated -->
+    <!-- Trace Target Image (Interactive AR Layer) -->
     <div id="trace-layer" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 touch-none cursor-move origin-center"
          style="transform: translate(-50%, -50%) scale(1) rotate(0deg); opacity: 0.55;">
       <img id="trace-img" 
@@ -115,25 +115,22 @@
       <span id="toast-text">Ready to trace</span>
     </div>
 
-    <!-- Onscreen Camera Setup Prompt (Prioritized with z-40 so it is never covered) -->
-    <div id="camera-fallback" class="absolute inset-0 z-40 flex flex-col items-center justify-center p-6 text-center bg-neutral-950/90 backdrop-blur-md">
+    <!-- Camera Authorization Prompt (No preview mode bypass) -->
+    <div id="camera-fallback" class="absolute inset-0 z-40 flex flex-col items-center justify-center p-6 text-center bg-neutral-950/95 backdrop-blur-md">
       <div class="w-16 h-16 rounded-2xl bg-sky-500/20 text-sky-400 flex items-center justify-center mb-3">
         <i data-lucide="camera" class="w-8 h-8"></i>
       </div>
-      <h2 class="text-xl font-bold mb-2">Enable Camera for AR Tracing</h2>
-      <p class="text-xs sm:text-sm text-neutral-300 max-w-xs mb-5 leading-relaxed">
-        Point your phone downwards over paper or sketchbook to trace the projected image with your pencil.
+      <h2 id="cam-heading" class="text-xl font-bold mb-2">Enable Camera for AR Tracing</h2>
+      <p id="cam-subtext" class="text-xs sm:text-sm text-neutral-300 max-w-xs mb-6 leading-relaxed">
+        Point your phone downwards over paper or a sketchbook to project and trace the guide with your pencil.
       </p>
-      <div class="flex flex-col gap-2.5 w-full max-w-xs">
-        <button id="start-cam-btn" class="w-full bg-sky-500 hover:bg-sky-600 text-white font-semibold py-3 px-6 rounded-full flex items-center justify-center gap-2 shadow-lg shadow-sky-500/30 active:scale-95 transition-transform">
+      <div class="flex flex-col gap-3 w-full max-w-xs">
+        <button id="start-cam-btn" class="w-full bg-sky-500 hover:bg-sky-600 text-white font-semibold py-3.5 px-6 rounded-full flex items-center justify-center gap-2 shadow-lg shadow-sky-500/30 active:scale-95 transition-transform">
           <i data-lucide="video" class="w-5 h-5"></i>
-          <span>Start AR Camera</span>
-        </button>
-        <button id="skip-cam-btn" class="w-full bg-white/10 hover:bg-white/15 text-neutral-300 font-medium py-2.5 px-4 rounded-full text-xs active:scale-95 transition">
-          Continue without camera (Preview Mode)
+          <span id="cam-btn-text">Start AR Camera</span>
         </button>
       </div>
-      <p class="text-[11px] text-neutral-400 mt-4">100% Free • No Subscription Needed • Works in Safari</p>
+      <p class="text-[11px] text-neutral-400 mt-5">Direct browser access • No account or subscription needed</p>
     </div>
   </div>
 
@@ -182,7 +179,7 @@
         <span id="label-opacity" class="w-8 text-right font-mono text-[11px] text-neutral-400">55%</span>
       </div>
 
-      <!-- Scale row (Expanded zoom to 8.0x) -->
+      <!-- Scale row (Expanded zoom up to 8.0x) -->
       <div class="flex items-center justify-between text-xs text-neutral-300 gap-2">
         <div class="flex items-center gap-1 w-16 shrink-0">
           <i data-lucide="maximize" class="w-3.5 h-3.5 text-sky-400"></i>
@@ -193,7 +190,7 @@
       </div>
     </div>
 
-    <!-- Filter Buttons & Image Selection Actions with horizontal scrolling prevention -->
+    <!-- Filter Buttons & Image Selection Actions -->
     <div class="flex flex-wrap items-center justify-between gap-1.5 max-w-lg mx-auto w-full pt-1 border-t border-white/5">
       
       <!-- Filter Selector -->
@@ -204,7 +201,7 @@
         <button data-filter="invert" class="filter-btn text-[10px] px-2 py-1 rounded-md text-neutral-300 hover:text-white transition">Invert</button>
       </div>
 
-      <!-- Transform Tools (Flip & Reset & Photos) -->
+      <!-- Transform Tools (Flip, Rotate, Reset, Photos) -->
       <div class="flex items-center gap-1 ml-auto">
         <button id="btn-flip" title="Flip Horizontal" class="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white active:scale-95 transition">
           <i data-lucide="flip-horizontal" class="w-3.5 h-3.5"></i>
@@ -225,6 +222,7 @@
     </div>
   </footer>
 
+  <!-- Library & Presets Modal -->
   <div id="modal-library" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden flex-col justify-end sm:justify-center sm:items-center p-0 sm:p-4">
     <div class="bg-neutral-900 border border-white/15 w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-200">
       
@@ -232,7 +230,7 @@
       <div class="p-4 border-b border-white/10 flex items-center justify-between">
         <div>
           <h3 class="text-base font-bold text-white">Choose Reference Sketch</h3>
-          <p class="text-xs text-neutral-400">Pick a preset or upload from your iPhone camera roll</p>
+          <p class="text-xs text-neutral-400">Pick a preset or upload from your device</p>
         </div>
         <button id="btn-close-modal" class="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-neutral-300 hover:text-white">
           <i data-lucide="x" class="w-4 h-4"></i>
@@ -270,14 +268,14 @@
     /* Initialize Lucide Icons */
     lucide.createIcons();
 
-    /* Preset Tracing Library */
+    /* Preset Tracing Library (Local sample1.jpg - sample6.jpg) */
     const PRESETS = [
-      { name: "Butterfly", url: "https://images.unsplash.com/photo-1558642452-9d2a7deb7f62?w=500&auto=format&fit=crop&q=80" },
-      { name: "Flower Rose", url: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=500&auto=format&fit=crop&q=80" },
-      { name: "Cat Outline", url: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=500&auto=format&fit=crop&q=80" },
-      { name: "Anime Eyes", url: "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=500&auto=format&fit=crop&q=80" },
-      { name: "Vintage Car", url: "https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=500&auto=format&fit=crop&q=80" },
-      { name: "Statue Bust", url: "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=500&auto=format&fit=crop&q=80" }
+      { name: "Sample 1", url: "sample1.jpg" },
+      { name: "Sample 2", url: "sample2.jpg" },
+      { name: "Sample 3", url: "sample3.jpg" },
+      { name: "Sample 4", url: "sample4.jpg" },
+      { name: "Sample 5", url: "sample5.jpg" },
+      { name: "Sample 6", url: "sample6.jpg" }
     ];
 
     /* App State */
@@ -299,8 +297,11 @@
     /* DOM Elements */
     const videoEl = document.getElementById('camera-video');
     const cameraFallback = document.getElementById('camera-fallback');
+    const camHeading = document.getElementById('cam-heading');
+    const camSubtext = document.getElementById('cam-subtext');
+    const camBtnText = document.getElementById('cam-btn-text');
     const startCamBtn = document.getElementById('start-cam-btn');
-    const skipCamBtn = document.getElementById('skip-cam-btn');
+
     const traceLayer = document.getElementById('trace-layer');
     const traceImg = document.getElementById('trace-img');
     const boundingBox = document.getElementById('bounding-box');
@@ -361,28 +362,21 @@
 
         cameraFallback.classList.add('hidden');
         traceLayer.classList.remove('hidden');
-        showToast("Camera connected");
+        showToast("AR Camera Active");
 
-        // Check if torch/flashlight is supported
+        // Check flashlight capability
         const capabilities = videoTrack.getCapabilities ? videoTrack.getCapabilities() : {};
         if (!capabilities.torch) {
           btnTorch.classList.add('opacity-40');
         }
       } catch (err) {
         console.error("Camera access error:", err);
-        showToast("Camera access denied or unavailable");
-        // Reveal tracing layer even if camera fails so app remains usable
-        cameraFallback.classList.add('hidden');
-        traceLayer.classList.remove('hidden');
+        camHeading.textContent = "Camera Access Required";
+        camSubtext.textContent = "Please grant camera permission in your browser settings to project images onto your sketch surface.";
+        camBtnText.textContent = "Retry Camera Access";
+        showToast("Camera permission required");
       }
     }
-
-    /* Preview Mode without camera */
-    skipCamBtn.addEventListener('click', () => {
-      cameraFallback.classList.add('hidden');
-      traceLayer.classList.remove('hidden');
-      showToast("Tracing preview mode active");
-    });
 
     async function toggleTorch() {
       if (!state.track) {
@@ -400,10 +394,10 @@
           btnTorch.classList.toggle('bg-yellow-400/20', state.torchActive);
           showToast(state.torchActive ? "Torch On" : "Torch Off");
         } else {
-          showToast("Flashlight not supported on this browser");
+          showToast("Flashlight not supported on this device/browser");
         }
       } catch (err) {
-        showToast("Flashlight control failed");
+        showToast("Flashlight control unavailable");
       }
     }
 
@@ -468,7 +462,7 @@
     let initialDistance = 0;
     let initialScale = 1;
 
-    // Helper for touch distance (Pinch to zoom)
+    // Helper for touch pinch-to-zoom
     function getDistance(touches) {
       const dx = touches[0].clientX - touches[1].clientX;
       const dy = touches[0].clientY - touches[1].clientY;
@@ -512,7 +506,7 @@
       initialDistance = 0;
     });
 
-    // Mouse drag support for desktop testing
+    // Mouse drag support for desktop/testing
     let isMouseDown = false;
     traceLayer.addEventListener('mousedown', (e) => {
       if (state.isLocked) return;
@@ -583,10 +577,15 @@
       presetGrid.innerHTML = '';
       PRESETS.forEach(item => {
         const card = document.createElement('div');
-        card.className = "group relative aspect-square rounded-xl overflow-hidden border border-white/10 hover:border-sky-400 cursor-pointer transition";
+        card.className = "group relative aspect-square rounded-xl overflow-hidden border border-white/10 hover:border-sky-400 cursor-pointer transition bg-neutral-800 flex items-center justify-center";
+        
+        const fallbackSvg = `https://placehold.co/400x400/1e293b/38bdf8?text=${encodeURIComponent(item.name)}`;
+        
         card.innerHTML = `
-          <img src="${item.url}" alt="${item.name}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300">
-          <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-1.5 text-center">
+          <img src="${item.url}" alt="${item.name}" 
+               onerror="this.onerror=null; this.src='${fallbackSvg}';"
+               class="w-full h-full object-cover group-hover:scale-105 transition duration-300">
+          <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-1.5 text-center">
             <span class="text-[10px] font-medium text-white truncate block">${item.name}</span>
           </div>
         `;
@@ -645,7 +644,6 @@
       ctx.font = "14px sans-serif";
       ctx.fillText("AR Drawing Studio Trace Snapshot", 16, canvas.height - 15);
 
-      // Trigger download
       try {
         const dataUrl = canvas.toDataURL('image/jpeg');
         const a = document.createElement('a');
@@ -660,9 +658,15 @@
       }
     });
 
-    /* Initialize presets & auto-trigger camera prompt on page load */
+    /* Initialize presets & setup on page load */
     window.addEventListener('DOMContentLoaded', () => {
       populatePresets();
+      // Default initial trace image to sample1.jpg
+      traceImg.src = "sample1.jpg";
+      traceImg.onerror = function() {
+        this.onerror = null;
+        this.src = "https://placehold.co/400x400/1e293b/38bdf8?text=Sample+1";
+      };
       applyTransform();
     });
   </script>
